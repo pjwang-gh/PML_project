@@ -1,0 +1,93 @@
+## Activity Class Prediction of Weight Lifting Exercises
+
+### Backgrounds
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this report, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+**The goal of this report is to predict the manner in which the participants did the exercise. This is the "classe" variable in the training set.**
+
+The data for this report are composed of two parts. The training dataset is available at: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+and The test data are available at: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+### Data preprocessing and preparation
+
+#### Data loading:
+```{r cache=TRUE}
+train <- read.csv("./pml-training.csv")
+test <- read.csv("./pml-testing.csv")
+```
+
+#### Data preprocessing
+We then partition the train data set into two sets. One for training and one for cross validation.
+```{r cache=TRUE}
+library(caret)
+set.seed(1114)
+inTrain <- createDataPartition(train$classe, p=0.7, list=FALSE)
+training <- train[inTrain,]
+CVtesting <- train[-inTrain,]
+```
+
+To preprocess the data, we remove predictors with zero variance for training, cross validation and test data sets.
+```{r cache=TRUE}
+zerovar <- nearZeroVar(training)
+training <- training[-zerovar]
+CVtesting <- CVtesting[-zerovar]
+test <- test[-zerovar]
+```
+
+The next step is to imputing data including the two parts of data filtering:
+1. remove the columns/predictors with a lot NAs. 
+2. We also decide to remove columns/predictors with non-numeric outcomes (except "classe") since these predictors (including "X", "user_name", "new_window", "num_window", and "timestamp") do not seem to be good predictors. 
+
+So we can filter the columns with the class of outcome of "numeric", and then impute the missing values for all data sets:
+```{r cache=TRUE}
+predTruth <- which(lapply(training, class) %in% c("numeric"))
+datapro <- preProcess(training[, predTruth], method = c("knnImpute"))
+library(RANN)
+protraining <- cbind(training$classe, predict(datapro, training[, predTruth]))
+proCVtesting <- cbind(CVtesting$classe, predict(datapro, CVtesting[, predTruth]))
+protesting <- predict(datapro, test[, predTruth])
+```
+
+For the new, preprocessed training data, we need to assign the name for the the first column.
+```{r cache=TRUE}
+names(protraining)[1] <- c("classe")
+names(proCVtesting)[1] <- c("classe")
+```
+
+### Modeling
+#### Fit the model
+We will use random forest method to do the modeling. To reduce the computing time, we set the optimized "mtry" value to 32.
+```{r cache=TRUE}
+library(randomForest)
+modelFit <- randomForest(classe ~ ., protraining, ntree = 500, mtry = 32)
+predtraining <- predict(modelFit, protraining)
+confusionMatrix(predtraining, protraining$classe)
+```
+We can see that the confusion matrix of the final model on the training data showing a 100% of accuracy, and 0% of error rate. We expect lower accuracy rate and higher out-of sample error rate on the cross validation and final test sets.
+
+#### Testing the model using cross validation
+We test the model on the cross validation data before on the testing data to see the accuracy of the modeling.
+```{r cache=TRUE}
+predCV <- predict(modelFit, proCVtesting)
+confusionMatrix(predCV, proCVtesting$classe)
+```
+The confusion matrix results show the high accuracy of ~99% on the cross validation set with erro rate of ~1%. 
+
+### Prediction using the model
+Finally, we apply the model on the testing set.
+```{r cache=TRUE}
+predtesting <- predict(modelFit, protesting)
+predtesting
+```
+
+We then predict the test set using the selected model, and obtain a 100% accuracy on the 20 test samples.
+
+### Conclusions
+The model developed in this report gives a good prediction on the activity class of weight lifting exercises.
+
+### References
+1. Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+2. http://groupware.les.inf.puc-rio.br/har#weight_lifting_exercises
+
